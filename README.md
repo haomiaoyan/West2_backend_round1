@@ -27,6 +27,22 @@ java -jar target/DWASearch.jar input.txt output.txt
 mvn test                         # 16 个测试，预期全绿
 ```
 
+这里说一下Maven的执行顺序：
+
+validate → compile → test → package → verify → install → deploy
+
+这是它们的作用
+
+| 阶段         | 作用                                 |
+| ---------- | ---------------------------------- |
+| `validate` | 验证项目是否正确，必要信息是否齐全                  |
+| `compile`  | 编译主源码到 `target/classes`            |
+| `test`     | 编译并运行单元测试，通常由 Surefire 插件执行        |
+| `package`  | 打包成 jar / war / ear 等，输出到 `target` |
+| `verify`   | 对打包结果做验证，比如集成测试、质量检查               |
+| `install`  | 把包安装到本地仓库 `~/.m2/repository`       |
+| `deploy`   | 把包发布到远程仓库，比如 Nexus / Artifactory   |
+
 ## 数据
 
 固定数据包位于 [`data/round-1-diving-2026/`](data/round-1-diving-2026/)，随仓库分发，程序只读本地文件，**不访问网络、不修改原始数据**。
@@ -68,8 +84,7 @@ ResultFormatter    成绩块格式化（分数累加用 BigDecimal）。
    替代方案：静态方法逐次传数据字符串（无法承载缓存、调用繁琐）；分发逻辑留在 main（核心逻辑与命令行耦合）。均排除。
 
 5. **总分用 `BigDecimal` 现场累加，等号右侧不使用数据自带的 `totalPoints`。**
-   理由：`double` 存在二进制表示误差（如 `0.1+0.2 = 0.30000000000000004`），分数全程字符串构造 `BigDecimal`、`setScale(2, HALF_UP)`，零污染；输出中等号右侧恒为程序自己的累加和，**不抄**数据自带值。该累加逻辑在**开发阶段**与数据 `totalPoints` 做过交叉验证（8 个项目全部一致；方法：格式化时临时比对 `sum.compareTo(new BigDecimal(totalPoints))` 并打印，验证通过后移除）。交付版本不在运行时重复校验固定数据——数据随仓库分发、经 SHA-256 核对、规定不得修改，运行时再验价值有限。
-   替代方案：直接抄数据总分——计算环节未被验证，且数据若错则输出盲从，排除。
+   理由：`double` 存在二进制表示误差（如 `0.1+0.2 = 0.30000000000000004`），分数全程字符串构造 `BigDecimal`、`setScale(2, HALF_UP)`，零污染；输出中等号右侧恒为程序自己的累加和，**不抄**数据自带值。该累加逻辑在**开发阶段**与数据 `totalPoints` 做过交叉验证。
 
 6. **所有文件读写显式指定 `StandardCharsets.UTF_8`。**
    实测教训：开发环境若被注入 `-Dfile.encoding=GBK`（如部分 IDE 运行配置），不指定编码的 `FileWriter` 会落盘 GBK 字节（`共`→`B9 B2`），UTF-8 读回时抛 `MalformedInputException`。虽然 `Files.writeString` 默认即 UTF-8，仍显式书写，把编码契约钉死在代码里。
@@ -82,7 +97,7 @@ ResultFormatter    成绩块格式化（分数累加用 BigDecimal）。
 | 场景 | 行为 |
 |---|---|
 | 命令行参数不足 2 个 | `System.err` 输出一行用法提示，退出码 1，不打印堆栈 |
-| input/数据文件不存在或不可读 | `System.err` 输出一行错误说明（含原因），退出码 1；**错误信息绝不写入 output.txt**（错误走 stderr，结果走结果文件，双通道分离） |
+| input/数据文件不存在或不可读 | `System.err` 输出一行错误说明，退出码 1；**错误信息绝不写入 output.txt**（错误走 stderr，结果走结果文件，双通道分离） |
 | 未知命令（含大小写不符、命令粘连） | 输出块 `Error\n-----\n` |
 | `result` 后项目名不合法/带多余字符/多余空格 | 输出块 `N/A\n-----\n` |
 | output 路径不可写/目录不存在 | 与读失败同一 catch：一行 stderr + 退出码 1（实测：`java -jar target\DWASearch.jar input.txt asdasd\out.txt` → 输出 `Error: asdasd\out.txt`，无堆栈） |
